@@ -4,12 +4,13 @@ export PYTHONHASHSEED=0
 export output_dir="./qqp"
 python3 -m torch.distributed.launch --nproc_per_node=$num_gpus \
 examples/text-classification/run_glue.py \
---model_name_or_path roberta-base \
+--model_name_or_path /home/kel/PycharmProjects/CSE527-24Spring/examples/NLU/qqp/model/checkpoint-147823 \
 --task_name qqp \
 --do_train \
 --do_eval \
+--do_predict \
 --max_seq_length 512 \
---per_device_train_batch_size 16 \
+--per_device_train_batch_size 32 \
 --learning_rate 5e-4 \
 --num_train_epochs 25 \
 --output_dir $output_dir/model \

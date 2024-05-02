@@ -218,7 +218,54 @@ class ModelArguments:
         metadata={"help": "Token Masking Probability"},
     )
 
-    
+
+def modify_matrix(lora_state_dict, model):
+    lora_ranks = [8] * 3 + [6] * 3 + [4] * 3 + [2] * 3
+    for i, r in enumerate(lora_ranks):
+
+        if r == 8:
+            continue
+
+        key_A = f'roberta.encoder.layer.{i}.attention.self.query.lora_A'
+        key_B = f'roberta.encoder.layer.{i}.attention.self.query.lora_B'
+        if key_A in lora_state_dict and key_B in lora_state_dict:
+            A = lora_state_dict[key_A]
+            B = lora_state_dict[key_B]
+            lora_update = B @ A
+
+            U, Sigma, VT = np.linalg.svd(lora_update.cpu(), full_matrices=False)
+            U_r = U[:, :r]
+            Sigma_r = np.diag(Sigma[:r])
+            VT_r = VT[:r, :]
+
+            D = U_r
+            C = Sigma_r @ VT_r
+
+            lora_state_dict[key_A] = torch.from_numpy(C)
+            lora_state_dict[key_B] = torch.from_numpy(D)
+
+        key_A = f'roberta.encoder.layer.{i}.attention.self.value.lora_A'
+        key_B = f'roberta.encoder.layer.{i}.attention.self.value.lora_B'
+
+        if key_A in lora_state_dict and key_B in lora_state_dict:
+            A = lora_state_dict[key_A]
+            B = lora_state_dict[key_B]
+            lora_update = B @ A
+
+            U, Sigma, VT = np.linalg.svd(lora_update.cpu(), full_matrices=False)
+            U_r = U[:, :r]
+            Sigma_r = np.diag(Sigma[:r])
+            VT_r = VT[:r, :]
+
+            D = U_r
+            C = Sigma_r @ VT_r
+
+            lora_state_dict[key_A] = torch.from_numpy(C)
+            lora_state_dict[key_B] = torch.from_numpy(D)
+
+    return lora_state_dict
+
+
 def main():
     # See all possible arguments in src/transformers/training_args.py
     # or by passing the --help flag to this script.
@@ -380,6 +427,7 @@ def main():
         if model_args.lora_path is not None:
             lora_state_dict = torch.load(model_args.lora_path)
             logger.info(f"Apply LoRA state dict from {model_args.lora_path}.")
+            lora_state_dict = modify_matrix(lora_state_dict, model)
             logger.info(lora_state_dict.keys())
             model.load_state_dict(lora_state_dict, strict=False)
         trainable_params.append('lora')

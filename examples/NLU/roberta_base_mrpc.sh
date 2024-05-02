@@ -1,4 +1,4 @@
-export num_gpus=8
+export num_gpus=1
 export CUBLAS_WORKSPACE_CONFIG=":16:8" # https://docs.nvidia.com/cuda/cublas/index.html#cublasApi_reproducibility
 export PYTHONHASHSEED=0
 export output_dir="./mrpc"
@@ -9,6 +9,7 @@ examples/text-classification/run_glue.py \
 --task_name mrpc \
 --do_train \
 --do_eval \
+--do_predict \
 --max_seq_length 512 \
 --per_device_train_batch_size 16 \
 --learning_rate 4e-4 \

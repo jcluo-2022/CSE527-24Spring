@@ -109,7 +109,7 @@ class Linear(nn.Linear, LoRALayer):
         if r > 0:
             self.lora_A = nn.Parameter(self.weight.new_zeros((r, in_features)))
             self.lora_B = nn.Parameter(self.weight.new_zeros((out_features, r)))
-            self.scaling = self.lora_alpha / self.r
+            self.scaling = 2
             # Freezing the pre-trained weight matrix
             self.weight.requires_grad = False
         self.reset_parameters()

@@ -164,6 +164,7 @@ class RobertaSelfAttention(nn.Module):
 
         if config.apply_lora:
             self.query = lora.Linear(config.hidden_size, self.all_head_size, config.lora_r, lora_alpha=config.lora_alpha)
+            print("Our Code in use")
         else:
             self.query = nn.Linear(config.hidden_size, self.all_head_size)
         
