@@ -4,7 +4,7 @@ export PYTHONHASHSEED=0
 export output_dir="./mnli"
 python -m torch.distributed.launch --nproc_per_node=$num_gpus \
 examples/text-classification/run_glue.py \
---model_name_or_path roberta-base \
+--model_name_or_path /home/kel/PycharmProjects/CSE527-24Spring/examples/NLU/mnli/model/checkpoint-441792 \
 --task_name mnli \
 --do_train \
 --do_eval \
