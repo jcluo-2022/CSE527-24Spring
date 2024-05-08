@@ -44,7 +44,6 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version
 
-
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.4.0")
 
@@ -81,7 +80,7 @@ class DataTrainingArguments:
         default=128,
         metadata={
             "help": "The maximum total input sequence length after tokenization. Sequences longer "
-            "than this will be truncated, sequences shorter will be padded."
+                    "than this will be truncated, sequences shorter will be padded."
         },
     )
     overwrite_cache: bool = field(
@@ -91,28 +90,28 @@ class DataTrainingArguments:
         default=True,
         metadata={
             "help": "Whether to pad all samples to `max_seq_length`. "
-            "If False, will pad the samples dynamically when batching to the maximum length in the batch."
+                    "If False, will pad the samples dynamically when batching to the maximum length in the batch."
         },
     )
     max_train_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of training examples to this "
-            "value if set."
+                    "value if set."
         },
     )
     max_val_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of validation examples to this "
-            "value if set."
+                    "value if set."
         },
     )
     max_test_samples: Optional[int] = field(
         default=None,
         metadata={
             "help": "For debugging purposes or quicker training, truncate the number of test examples to this "
-            "value if set."
+                    "value if set."
         },
     )
     train_file: Optional[str] = field(
@@ -135,7 +134,7 @@ class DataTrainingArguments:
             assert train_extension in ["csv", "json"], "`train_file` should be a csv or a json file."
             validation_extension = self.validation_file.split(".")[-1]
             assert (
-                validation_extension == train_extension
+                    validation_extension == train_extension
             ), "`validation_file` should have the same extension (csv or json) as `train_file`."
 
 
@@ -170,7 +169,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": "Will use the token generated when running `transformers-cli login` (necessary to use this script "
-            "with private models)."
+                    "with private models)."
         },
     )
     apply_lora: Optional[bool] = field(
@@ -219,49 +218,42 @@ class ModelArguments:
     )
 
 
-def modify_matrix(lora_state_dict, model):
-    lora_ranks = [8] * 3 + [6] * 3 + [4] * 3 + [2] * 3
+def SVD_LoRA_Matrices(lora_state_dict, model):
+    # LoRA Rank Configuration
+    lora_ranks = [10] * 4 + [8] * 4 + [6] * 4
     for i, r in enumerate(lora_ranks):
-
-        if r == 8:
-            continue
-
+        # The key to get LoRA matrices of Wq
         key_A = f'roberta.encoder.layer.{i}.attention.self.query.lora_A'
         key_B = f'roberta.encoder.layer.{i}.attention.self.query.lora_B'
-        if key_A in lora_state_dict and key_B in lora_state_dict:
-            A = lora_state_dict[key_A]
-            B = lora_state_dict[key_B]
-            lora_update = B @ A
+        lora_state_dict = process_lora_layer(key_A, key_B, r, lora_state_dict)
 
-            U, Sigma, VT = np.linalg.svd(lora_update.cpu(), full_matrices=False)
-            U_r = U[:, :r]
-            Sigma_r = np.diag(Sigma[:r])
-            VT_r = VT[:r, :]
-
-            D = U_r
-            C = Sigma_r @ VT_r
-
-            lora_state_dict[key_A] = torch.from_numpy(C)
-            lora_state_dict[key_B] = torch.from_numpy(D)
-
+        # The key to get LoRA matrices of Wv
         key_A = f'roberta.encoder.layer.{i}.attention.self.value.lora_A'
         key_B = f'roberta.encoder.layer.{i}.attention.self.value.lora_B'
+        lora_state_dict = process_lora_layer(key_A, key_B, r, lora_state_dict)
 
-        if key_A in lora_state_dict and key_B in lora_state_dict:
-            A = lora_state_dict[key_A]
-            B = lora_state_dict[key_B]
+    return lora_state_dict
+
+
+def process_lora_layer(key_A, key_B, r, lora_state_dict):
+    if key_A in lora_state_dict and key_B in lora_state_dict:
+        # make sure everything is in CPU
+        A = lora_state_dict[key_A].cpu().numpy()
+        B = lora_state_dict[key_B].cpu().numpy()
+
+        if r != 8: # Rank mismatch
+            # use SVD to approximate
             lora_update = B @ A
-
-            U, Sigma, VT = np.linalg.svd(lora_update.cpu(), full_matrices=False)
+            U, Sigma, VT = np.linalg.svd(lora_update)
             U_r = U[:, :r]
             Sigma_r = np.diag(Sigma[:r])
             VT_r = VT[:r, :]
-
             D = U_r
             C = Sigma_r @ VT_r
 
-            lora_state_dict[key_A] = torch.from_numpy(C)
-            lora_state_dict[key_B] = torch.from_numpy(D)
+            # Update dictionary
+            lora_state_dict[key_A] = torch.from_numpy(C).to(lora_state_dict[key_A].device)
+            lora_state_dict[key_B] = torch.from_numpy(D).to(lora_state_dict[key_B].device)
 
     return lora_state_dict
 
@@ -347,7 +339,7 @@ def main():
                 train_extension = data_args.train_file.split(".")[-1]
                 test_extension = data_args.test_file.split(".")[-1]
                 assert (
-                    test_extension == train_extension
+                        test_extension == train_extension
                 ), "`test_file` should have the same extension (csv or json) as `train_file`."
                 data_files["test"] = data_args.test_file
             else:
@@ -427,7 +419,7 @@ def main():
         if model_args.lora_path is not None:
             lora_state_dict = torch.load(model_args.lora_path)
             logger.info(f"Apply LoRA state dict from {model_args.lora_path}.")
-            lora_state_dict = modify_matrix(lora_state_dict, model)
+            lora_state_dict = SVD_LoRA_Matrices(lora_state_dict, model)
             logger.info(lora_state_dict.keys())
             model.load_state_dict(lora_state_dict, strict=False)
         trainable_params.append('lora')
@@ -438,10 +430,12 @@ def main():
             head_state_dict = torch.load(os.path.join(model_args.adapter_path, 'pytorch_model_head.bin'))
             added_state_dict = {}
             for k, v in adapter_state_dict.items():
-                new_k = k.replace(data_args.task_name + '.', '').replace('adapter_down.0.', 'adapter_A.').replace('adapter_up.', 'adapter_B.').replace('.adapters.', '.adapter.')
+                new_k = k.replace(data_args.task_name + '.', '').replace('adapter_down.0.', 'adapter_A.').replace(
+                    'adapter_up.', 'adapter_B.').replace('.adapters.', '.adapter.')
                 added_state_dict[new_k] = v
             for k, v in head_state_dict.items():
-                new_k = k.replace('heads.' + data_args.task_name + '.1', 'classifier.dense').replace('heads.' + data_args.task_name + '.4', 'classifier.out_proj')
+                new_k = k.replace('heads.' + data_args.task_name + '.1', 'classifier.dense').replace(
+                    'heads.' + data_args.task_name + '.4', 'classifier.out_proj')
                 added_state_dict[new_k] = v
             logger.info(f"Apply adapter state dict from {model_args.adapter_path}.")
             logger.info(added_state_dict.keys())
@@ -489,9 +483,9 @@ def main():
     # Some models have set the order of the labels to use, so let's make sure we do use it.
     label_to_id = None
     if (
-        model.config.label2id != PretrainedConfig(num_labels=num_labels).label2id
-        and data_args.task_name is not None
-        and not is_regression
+            model.config.label2id != PretrainedConfig(num_labels=num_labels).label2id
+            and data_args.task_name is not None
+            and not is_regression
     ):
         # Some have all caps in their config, some don't.
         label_name_to_id = {k.lower(): v for k, v in model.config.label2id.items()}
@@ -555,6 +549,7 @@ def main():
     # Get the metric function
     if data_args.task_name is not None:
         metric = load_metric("glue", data_args.task_name)
+
     # TODO: When datasets metrics include regular accuracy, make an else here and remove special branch from
     # compute_metrics
 
